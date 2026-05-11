@@ -48,6 +48,7 @@ export function detectSweepReclaim(
     return {
       id: `${ts}-long-${bucket(rangeLow)}`,
       ts,
+      playbook: 'sweep-reclaim',
       side: 'long',
       sweptLevel: rangeLow,
       entryHint: last.close,
@@ -67,6 +68,7 @@ export function detectSweepReclaim(
     return {
       id: `${ts}-short-${bucket(rangeHigh)}`,
       ts,
+      playbook: 'sweep-reclaim',
       side: 'short',
       sweptLevel: rangeHigh,
       entryHint: last.close,

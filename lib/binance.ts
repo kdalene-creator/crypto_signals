@@ -28,7 +28,7 @@ type RawKline = [
 export async function getKlines(
   symbol = 'BTCUSDT',
   interval = '1m',
-  limit = 120,
+  limit = 260,
 ): Promise<Candle[]> {
   const raw = await fetchJson<RawKline[]>(
     `${FAPI}/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,

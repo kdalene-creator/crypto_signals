@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import type { Signal } from '@/lib/types';
 import { getKlines, getOpenInterestHist, getFundingRateBp } from '@/lib/binance';
 import { classifySession, isActiveSession, sessionStartMs } from '@/lib/indicators/session';
 import { oiQuadrant } from '@/lib/oi';
 import { detectSweepReclaim } from '@/lib/playbooks/sweep-reclaim';
+import { detectSmaCross } from '@/lib/playbooks/sma-cross';
 import { tryClaim, persistSignal } from '@/lib/store';
 import { sendSignalEmail } from '@/lib/email';
 
@@ -29,30 +31,43 @@ export async function GET(req: NextRequest) {
 
   try {
     const [candles, oi, fundingBp] = await Promise.all([
-      getKlines('BTCUSDT', '1m', 120),
+      getKlines('BTCUSDT', '1m', 260),
       getOpenInterestHist('BTCUSDT', '5m', 12),
       getFundingRateBp('BTCUSDT'),
     ]);
 
-    const signal = detectSweepReclaim(candles, {
-      sessionStart: sessionStartMs(now),
-      oiQuadrant: oiQuadrant(candles, oi),
-      session,
-      fundingBp,
-      now: now.getTime(),
-    });
+    const quad = oiQuadrant(candles, oi);
+    const sharedCtx = { session, fundingBp, oiQuadrant: quad, now: now.getTime() };
 
-    if (!signal) {
+    const detected: Signal[] = [];
+    const sweep = detectSweepReclaim(candles, { ...sharedCtx, sessionStart: sessionStartMs(now) });
+    if (sweep) detected.push(sweep);
+    const smaCross = detectSmaCross(candles, sharedCtx);
+    if (smaCross) detected.push(smaCross);
+
+    if (detected.length === 0) {
       return NextResponse.json({ checked: true, signal: null, session });
     }
 
-    const claimed = await tryClaim(signal);
-    if (!claimed) {
-      return NextResponse.json({ deduped: true, signal });
+    // For each detected signal, claim dedup → persist → email. Independent per playbook.
+    const results: Array<{ playbook: string; result: 'alerted' | 'deduped' | 'error'; detail?: string }> = [];
+    for (const sig of detected) {
+      try {
+        const claimed = await tryClaim(sig);
+        if (!claimed) {
+          results.push({ playbook: sig.playbook, result: 'deduped' });
+          continue;
+        }
+        await Promise.all([sendSignalEmail(sig), persistSignal(sig)]);
+        results.push({ playbook: sig.playbook, result: 'alerted' });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[scan] ${sig.playbook} alert error:`, msg);
+        results.push({ playbook: sig.playbook, result: 'error', detail: msg });
+      }
     }
 
-    await Promise.all([sendSignalEmail(signal), persistSignal(signal)]);
-    return NextResponse.json({ alerted: true, signal });
+    return NextResponse.json({ checked: true, signals: detected, results, session });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[scan] error:', message);

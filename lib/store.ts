@@ -1,6 +1,10 @@
 import { Redis } from '@upstash/redis';
-import type { Signal, Side } from './types';
-import { bucket } from './playbooks/sweep-reclaim';
+import type { Signal, Side, Playbook } from './types';
+
+const LEVEL_BUCKET_USD = 10;
+function bucket(price: number): number {
+  return Math.round(price / LEVEL_BUCKET_USD) * LEVEL_BUCKET_USD;
+}
 
 const DEDUP_TTL_S = 30 * 60;
 const RECENT_KEY = 'signals:recent';
@@ -21,12 +25,16 @@ function redis(): Redis {
   return _redis;
 }
 
-function dedupKey(side: Side, sweptLevel: number): string {
-  return `dedup:${side}:${bucket(sweptLevel)}`;
+function dedupKey(playbook: Playbook, side: Side, level: number): string {
+  return `dedup:${playbook}:${side}:${bucket(level)}`;
 }
 
 export async function tryClaim(signal: Signal): Promise<boolean> {
-  const key = dedupKey(signal.side, signal.sweptLevel);
+  // For sweep-reclaim we key on the swept level. For sma-cross there's no
+  // 'swept level' per se — we key on the entry instead so we don't
+  // re-alert the same continuation push within the TTL window.
+  const level = signal.playbook === 'sweep-reclaim' ? signal.sweptLevel : signal.entryHint;
+  const key = dedupKey(signal.playbook, signal.side, level);
   const claimed = await redis().set(key, signal.id, { nx: true, ex: DEDUP_TTL_S });
   return claimed === 'OK';
 }
