@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import type { Signal } from './types';
+import { shortLabel, fmtPrice } from './symbols';
 
 let _resend: Resend | null = null;
 
@@ -9,10 +10,6 @@ function resend(): Resend {
   if (!key) throw new Error('RESEND_API_KEY must be set');
   _resend = new Resend(key);
   return _resend;
-}
-
-function fmt(n: number, digits = 2): string {
-  return n.toLocaleString('en-US', { maximumFractionDigits: digits });
 }
 
 function quadrantBlurb(side: Signal['side'], q: Signal['oiQuadrant']): string {
@@ -28,13 +25,9 @@ function quadrantBlurb(side: Signal['side'], q: Signal['oiQuadrant']): string {
 }
 
 // Tier classification — currently CONSERVATIVE.
-// Two 30d backtests (windows ending 2026-05-01 and 2026-05-11) gave
-// CONFLICTING results for sweep-reclaim's "long+overlap" bucket:
-//   Window 1: 18 signals, 61% WR, +0.42 avgR, +7.6R
-//   Window 2: 10 signals, 40% WR, -0.40 avgR, -4.0R
-// This is regime drift, not noise. Holding off on A++ promotions until at
-// least 3 non-overlapping windows agree. The "A+" tag below still marks
-// overlap-window signals but no longer implies a proven edge.
+// Two 30d backtests gave CONFLICTING results for sweep-reclaim's "long+overlap" bucket
+// (+7.6R then -4.0R). Holding off on A++ promotions until 3+ non-overlapping windows agree.
+// A+ marks overlap-window context only; no proven edge.
 function tierTag(signal: Signal): { short: string; blurb: string } {
   if (signal.aPlus) {
     return {
@@ -52,8 +45,9 @@ function playbookLabel(p: Signal['playbook']): string {
 export function renderSignalEmail(signal: Signal): { subject: string; text: string } {
   const sideTag = signal.side.toUpperCase();
   const tier = tierTag(signal);
+  const sym = shortLabel(signal.symbol);
   const headerLevel = signal.playbook === 'sweep-reclaim' ? signal.sweptLevel : signal.entryHint;
-  const subject = `[BTC SCALP ${tier.short}${sideTag}] ${playbookLabel(signal.playbook)} @ ${fmt(headerLevel, 0)}`;
+  const subject = `[${sym} ${tier.short}${sideTag}] ${playbookLabel(signal.playbook)} @ ${fmtPrice(signal.symbol, headerLevel)}`;
 
   const r = (signal.entryHint - signal.stopHint) * (signal.side === 'long' ? 1 : -1);
   const tp1R = ((signal.tp1Hint - signal.entryHint) * (signal.side === 'long' ? 1 : -1)) / Math.max(Math.abs(r), 1e-9);
@@ -63,6 +57,7 @@ export function renderSignalEmail(signal: Signal): { subject: string; text: stri
   const tp2Note = signal.playbook === 'sweep-reclaim' ? 'opposite extreme' : '2R';
 
   const lines = [
+    `Symbol: ${sym} (${signal.symbol})`,
     `Playbook: ${playbookLabel(signal.playbook)}`,
     `Side: ${sideTag}`,
     `Tier: ${tier.blurb}`,
@@ -70,16 +65,16 @@ export function renderSignalEmail(signal: Signal): { subject: string; text: stri
     `Time: ${new Date(signal.ts).toISOString()}`,
     '',
     signal.playbook === 'sweep-reclaim'
-      ? `Swept level: ${fmt(signal.sweptLevel, 0)}`
-      : `20 SMA at cross: ${fmt(signal.sweptLevel, 1)}`,
-    `Entry hint:  ${fmt(signal.entryHint, 1)}`,
-    `Stop hint:   ${fmt(signal.stopHint, 1)}  (risk ${fmt(Math.abs(r), 1)} USD)`,
-    `TP1:         ${fmt(signal.tp1Hint, 1)}  (~${tp1R.toFixed(2)}R, ${tp1Note})`,
-    `TP2:         ${fmt(signal.tp2Hint, 1)}  (~${tp2R.toFixed(2)}R, ${tp2Note})`,
+      ? `Swept level: ${fmtPrice(signal.symbol, signal.sweptLevel)}`
+      : `20 SMA at cross: ${fmtPrice(signal.symbol, signal.sweptLevel)}`,
+    `Entry hint:  ${fmtPrice(signal.symbol, signal.entryHint)}`,
+    `Stop hint:   ${fmtPrice(signal.symbol, signal.stopHint)}  (risk ${fmtPrice(signal.symbol, Math.abs(r))} USD)`,
+    `TP1:         ${fmtPrice(signal.symbol, signal.tp1Hint)}  (~${tp1R.toFixed(2)}R, ${tp1Note})`,
+    `TP2:         ${fmtPrice(signal.symbol, signal.tp2Hint)}  (~${tp2R.toFixed(2)}R, ${tp2Note})`,
     '',
     signal.playbook === 'sweep-reclaim'
       ? `Vol vs avg:  ${signal.volRatio.toFixed(2)}x`
-      : `20/50/200 SMA stacked: ${fmt(signal.vwap, 1)} (20 SMA at signal)`,
+      : `20/50/200 SMA stacked: ${fmtPrice(signal.symbol, signal.vwap)} (20 SMA at signal)`,
     quadrantBlurb(signal.side, signal.oiQuadrant),
     signal.fundingBp === null ? 'Funding: n/a' : `Funding: ${signal.fundingBp.toFixed(2)} bp`,
     '',

@@ -32,6 +32,7 @@ function uptrend(n: number, startClose = 100, slope = 0.5): Candle[] {
 }
 
 const baseCtx = {
+  symbol: 'BTCUSDT' as const,
   oiQuadrant: 'longs-entering' as const,
   session: 'overlap' as const,
   fundingBp: 1.5,

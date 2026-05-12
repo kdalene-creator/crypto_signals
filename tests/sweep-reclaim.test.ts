@@ -22,6 +22,7 @@ function rangeCandles(count: number, low: number, high: number, vol: number): Ca
 }
 
 const baseCtx = {
+  symbol: 'BTCUSDT' as const,
   sessionStart: SESSION_START,
   oiQuadrant: 'shorts-entering' as const,
   session: 'overlap' as const,

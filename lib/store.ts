@@ -1,14 +1,17 @@
 import { Redis } from '@upstash/redis';
-import type { Signal, Side, Playbook } from './types';
-
-const LEVEL_BUCKET_USD = 10;
-function bucket(price: number): number {
-  return Math.round(price / LEVEL_BUCKET_USD) * LEVEL_BUCKET_USD;
-}
+import type { Signal } from './types';
 
 const DEDUP_TTL_S = 30 * 60;
 const RECENT_KEY = 'signals:recent';
 const RECENT_MAX = 100;
+
+/** Log-based price bucketing for symbol-agnostic dedup.
+ *  bpStep = 5 means prices within 0.05% of each other share the same bucket.
+ *  Works equally for BTC at $80k and SOL at $200. */
+function logBucket(price: number, bpStep = 5): string {
+  if (price <= 0) return '0';
+  return Math.round((Math.log(price) * 10000) / bpStep).toString();
+}
 
 let _redis: Redis | null = null;
 
@@ -25,16 +28,10 @@ function redis(): Redis {
   return _redis;
 }
 
-function dedupKey(playbook: Playbook, side: Side, level: number): string {
-  return `dedup:${playbook}:${side}:${bucket(level)}`;
-}
-
 export async function tryClaim(signal: Signal): Promise<boolean> {
-  // For sweep-reclaim we key on the swept level. For sma-cross there's no
-  // 'swept level' per se — we key on the entry instead so we don't
-  // re-alert the same continuation push within the TTL window.
+  // sweep-reclaim keys on swept level; sma-cross keys on entry.
   const level = signal.playbook === 'sweep-reclaim' ? signal.sweptLevel : signal.entryHint;
-  const key = dedupKey(signal.playbook, signal.side, level);
+  const key = `dedup:${signal.symbol}:${signal.playbook}:${signal.side}:${logBucket(level)}`;
   const claimed = await redis().set(key, signal.id, { nx: true, ex: DEDUP_TTL_S });
   return claimed === 'OK';
 }

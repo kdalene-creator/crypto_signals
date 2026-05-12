@@ -1,12 +1,12 @@
-import type { Candle, OiQuadrant, Session, Signal } from '../types';
+import type { Candle, OiQuadrant, Session, Signal, Symbol } from '../types';
 import { anchoredVwap } from '../indicators/vwap';
 import { meanVolume } from '../indicators/volume';
 
 export const LOOKBACK = 30;
 export const VOL_RATIO_MIN = 1.5;
-export const LEVEL_BUCKET_USD = 10;
 
 export type DetectorContext = {
+  symbol: Symbol;
   sessionStart: number;
   oiQuadrant: OiQuadrant;
   session: Session;
@@ -46,8 +46,9 @@ export function detectSweepReclaim(
 
   if (last.low < rangeLow && last.close > rangeLow && volRatio >= volMin && last.close > vwap) {
     return {
-      id: `${ts}-long-${bucket(rangeLow)}`,
+      id: `${ts}-${ctx.symbol}-sweep-long`,
       ts,
+      symbol: ctx.symbol,
       playbook: 'sweep-reclaim',
       side: 'long',
       sweptLevel: rangeLow,
@@ -66,8 +67,9 @@ export function detectSweepReclaim(
 
   if (last.high > rangeHigh && last.close < rangeHigh && volRatio >= volMin && last.close < vwap) {
     return {
-      id: `${ts}-short-${bucket(rangeHigh)}`,
+      id: `${ts}-${ctx.symbol}-sweep-short`,
       ts,
+      symbol: ctx.symbol,
       playbook: 'sweep-reclaim',
       side: 'short',
       sweptLevel: rangeHigh,
@@ -85,8 +87,4 @@ export function detectSweepReclaim(
   }
 
   return null;
-}
-
-export function bucket(price: number): number {
-  return Math.round(price / LEVEL_BUCKET_USD) * LEVEL_BUCKET_USD;
 }

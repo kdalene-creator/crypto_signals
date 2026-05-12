@@ -26,9 +26,12 @@ export type Side = 'long' | 'short';
 
 export type Playbook = 'sweep-reclaim' | 'sma-cross';
 
+export type Symbol = 'BTCUSDT' | 'ETHUSDT' | 'SOLUSDT';
+
 export type Signal = {
   id: string;
   ts: number;
+  symbol: Symbol;
   playbook: Playbook;
   side: Side;
   /** Reference level for the setup. For sweep-reclaim = the swept high/low.

@@ -1,10 +1,9 @@
-import type { Candle, OiQuadrant, Session, Signal } from '../types';
+import type { Candle, OiQuadrant, Session, Signal, Symbol } from '../types';
 import { sma } from '../indicators/sma';
 
 export const SMA_FAST = 20;
 export const SMA_MID = 50;
 export const SMA_SLOW = 200;
-export const SMA_LEVEL_BUCKET_USD = 10;
 
 /** A 'strong' bullish candle has close>open AND no lower wick (low>=open).
  *  Short mirror has close<open AND no upper wick (high<=open). */
@@ -16,15 +15,12 @@ function strongBear(c: Candle): boolean {
 }
 
 export type SmaCrossContext = {
+  symbol: Symbol;
   oiQuadrant: OiQuadrant;
   session: Session;
   fundingBp: number | null;
   now?: number;
 };
-
-function bucket(price: number): number {
-  return Math.round(price / SMA_LEVEL_BUCKET_USD) * SMA_LEVEL_BUCKET_USD;
-}
 
 /**
  * Detects the trend-pullback cross setup.
@@ -75,8 +71,9 @@ export function detectSmaCross(
       const R = entry - stop;
       if (R > 0) {
         return {
-          id: `${ts}-smacross-long-${bucket(entry)}`,
+          id: `${ts}-${ctx.symbol}-smacross-long`,
           ts,
+          symbol: ctx.symbol,
           playbook: 'sma-cross',
           side: 'long',
           sweptLevel: sma20AtCross,
@@ -104,8 +101,9 @@ export function detectSmaCross(
       const R = stop - entry;
       if (R > 0) {
         return {
-          id: `${ts}-smacross-short-${bucket(entry)}`,
+          id: `${ts}-${ctx.symbol}-smacross-short`,
           ts,
+          symbol: ctx.symbol,
           playbook: 'sma-cross',
           side: 'short',
           sweptLevel: sma20AtCross,
